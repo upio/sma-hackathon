@@ -13,7 +13,7 @@ import com.amazon.speech.ui.{OutputSpeech, PlainTextOutputSpeech}
 import spray.json._
 import fommil.sjs.FamilyFormats._
 
-object SamsAdventureStreamHandler extends SpeechletRequestStreamHandler(SamsAdventureSpeechlet, Set("").asJava)
+object SamsAdventureStreamHandler extends SpeechletRequestStreamHandler(SamsAdventureSpeechlet, Set("amzn1.ask.skill.58a1303c-ee45-485b-a01d-e626a1713fa7").asJava)
 
 object SamsAdventureSpeechlet extends Speechlet {
 
@@ -74,10 +74,16 @@ object SamsAdventureSpeechlet extends Speechlet {
     response
   }
 
-  def onLaunch(request: LaunchRequest, session: Session): SpeechletResponse = ???
+  def onLaunch(request: LaunchRequest, session: Session): SpeechletResponse = {
+    session.setAttribute("map", baseMap.toJson.prettyPrint)
+    val response = new SpeechletResponse()
+    val speech = new PlainTextOutputSpeech()
+    speech.setText("Welcome to Sams Adventure!")
+    response.setOutputSpeech(speech)
+    response
+  }
 
   def onSessionStarted(request: SessionStartedRequest, session: Session): Unit = {
-    session.setAttribute("map", baseMap.toJson.prettyPrint)
   }
 }
 
