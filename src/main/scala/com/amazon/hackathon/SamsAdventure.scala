@@ -4,19 +4,20 @@
 package com.amazon.hackathon
 
 
+import com.amazon.hackathon.domain._
 import com.amazon.speech.speechlet._
 
 import scala.collection.JavaConverters._
 import com.amazon.speech.speechlet.lambda.SpeechletRequestStreamHandler
+import com.amazon.speech.ui.{OutputSpeech, PlainTextOutputSpeech}
+import spray.json._
+import fommil.sjs.FamilyFormats._
 
-import scala.util.{Right => Good, Left => Bad}
+object SamsAdventureStreamHandler extends SpeechletRequestStreamHandler(SamsAdventureSpeechlet, Set("").asJava)
 
-/**
-  *
-  */
 object SamsAdventureSpeechlet extends Speechlet {
 
-  val baseMap = GameMap((1, 2), Array(
+  val baseMap = GameMap(2, 3, Array(
     Array(Wall, Wall, Wall, Blank, Goal),
     Array(Wall, Wall, Enemy("ghoul", 2), Blank, Wall),
     Array(Blank, Blank, Blank, Wall, Wall),
@@ -26,75 +27,84 @@ object SamsAdventureSpeechlet extends Speechlet {
 
   def onSessionEnded(request: SessionEndedRequest, session: Session): Unit = ???
 
-  def onIntent(request: IntentRequest, session: Session): SpeechletResponse = {
-    request.getIntent
+  private def getAction(request: IntentRequest): SamsAdventureIntent = ???
 
-    ???
+  def onIntent(request: IntentRequest, session: Session): SpeechletResponse = {
+    val gameMap = session.getAttribute("map").asInstanceOf[String].parseJson.convertTo[GameMap]
+
+    val result = getAction(request) match {
+      case Move(direction) => gameMap.move(direction)
+      case Attack(direction) => gameMap.attack(direction)
+    }
+
+    session.setAttribute("map", gameMap.toJson.prettyPrint)
+
+    def tileMessage(tile: Tile): String = tile match {
+      case Blank | Wall  => s"a ${tile.toString}"
+      case Goal => "the goal!"
+      case Enemy(name, health) => s"a $name with $health health"
+      case _ => "oopsy-daisy"
+    }
+
+    val message = result match {
+      case NothingThere => "There is nothing to attack"
+
+      case Killed(Enemy(name, _)) => s"You killed a $name"
+
+      case Hit(Enemy(name, health)) => s"You hit the $name, it now has $health health"
+
+      case BumpWall => "You walked into a wall, dummy."
+
+      case Moved(left, right, up, down) =>
+        s"to the left of you is ${tileMessage(left)}." +
+        s"to the right of you is ${tileMessage(right)}" +
+        s"above you is ${tileMessage(right)}" +
+        s"below you is ${tileMessage(right)}"
+
+      case Hurt(Enemy(name, enemyHealth), health) => s"you were hurt by a $enemyHealth. You now have $health health"
+
+      case Victory => "You win!"
+    }
+
+    val response = new SpeechletResponse()
+    val speech = new PlainTextOutputSpeech()
+    speech.setText(message)
+    response.setOutputSpeech(speech)
+
+    response
   }
 
   def onLaunch(request: LaunchRequest, session: Session): SpeechletResponse = ???
 
-  def onSessionStarted(request: SessionStartedRequest, session: Session): Unit = ???
+  def onSessionStarted(request: SessionStartedRequest, session: Session): Unit = {
+    session.setAttribute("map", baseMap.toJson.prettyPrint)
+  }
 }
 
-sealed trait Direction
-case object Up extends Direction
-case object Down extends Direction
-case object Left extends Direction
-case object Right extends Direction
+object Scratch extends App {
+  val map = GameMap(2, 3, Array(
+    Array(Wall, Wall, Wall, Blank, Goal),
+    Array(Wall, Wall, Enemy("ghoul", 2), Blank, Wall),
+    Array(Blank, Blank, Blank, Wall, Wall),
+    Array(Blank, Blank, Player(10), Blank, Blank),
+    Array(Blank, Blank, Wall, Blank, Wall)
+  ))
 
-sealed trait SamsAdventureIntent
-case class Move(direction: Direction) extends SamsAdventureIntent
-case class Attack(direction: Direction) extends SamsAdventureIntent
-
-sealed trait Tile
-case object Blank extends Tile
-case object Wall extends Tile
-case class Enemy(name: String, health: Int) extends Tile
-case class Player(health: Int) extends Tile
-case object Goal extends Tile
-
-case class GameMap(playerIndex: (Int, Int), tiles: Array[Array[Tile]]) {
-  val (x, y) = playerIndex
-  private def indexAt(direction: Direction) = direction match {
-    case Up => (x, y+1)
-    case Down => (x, y-1)
-    case Left => (x-1, y+1)
-    case Right => (x+1, y+1)
+  def printAndMap(result: ActionResult): Unit = {
+    println(result)
+    map.tiles.map(_.toList).foreach(println)
+    println("-----------------------------------------")
   }
 
-  def move(direction: Direction): Either[String, GameMap] = {
-    val (newX, newY) = indexAt(direction)
-
-    tiles(x)(y) match {
-      case Blank =>
-        tiles(newX)(newY) = tiles(x)(y)
-        tiles(x)(y) = Blank
-
-        Good(GameMap((newX, newY), tiles))
-
-      case Wall => Bad(s"there is a wall $direction there")
-
-      case Goal => Bad("you found the goal! You win!")
-
-      case Enemy(name, health) => Bad(s"you can't move, a $name with $health health blocks your path")
-    }
-  }
-
-  def attack(direction: Direction): Either[String, GameMap] = {
-    val (enemyX, enemyY) = indexAt(direction)
-
-//    tiles(x)(y) match {
-//      case Enemy(name, health) => null
-//    }
-
-    ???
-  }
-
+  printAndMap(map.move(Up))
+  printAndMap(map.attack(Up))
+  printAndMap(map.attack(Up))
+  printAndMap(map.move(Right))
+  printAndMap(map.move(Up))
+  printAndMap(map.move(Right))
+  printAndMap(map.move(Right))
+  printAndMap(map.move(Up))
+  printAndMap(map.move(Right))
+  printAndMap(map.move(Right))
+  printAndMap(map.move(Right))
 }
-
-
-
-
-object SamsAdventureStreamHandler extends SpeechletRequestStreamHandler(SamsAdventureSpeechlet, Set("").asJava)
-
