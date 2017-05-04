@@ -123,15 +123,16 @@ object SamsAdventureSpeechlet extends Speechlet {
   }
 
   def locationMessage(left: Tile, right: Tile, up: Tile, down: Tile): String = {
-    val map = Map("left" -> left, "right" -> right, "up" -> up, "down" -> down)
+    val map = Map("east" -> left, "west" -> right, "north" -> up, "south" -> down)
 
     val a: Seq[(Tile, Seq[String])] = map.toSeq.groupBy(_._2).map { case (tile, group) => tile -> group.map(_._1) }.toSeq
 
-    a.map { x => tileMessage(x._1) + " is to your " + directionText(x._2.toList) }.mkString(" ")
+    a.map { x => tileMessage(x._1) + " is to the " + directionText(x._2.toList) }.mkString(". ")
   }
 
   def directionText(directions: List[String]): String = {
     directions match {
+      case Nil => ""
       case x :: Nil => x
       case x :: y :: Nil => x + " and " + y
       case x :: xs => x + ", " + directionText(xs)
