@@ -29,7 +29,8 @@ object SamsAdventureSpeechlet extends Speechlet {
   def onSessionEnded(request: SessionEndedRequest, session: Session): Unit = ???
 
   private def tileMessage(tile: Tile): String = tile match {
-    case Blank | Wall  => s"a ${tile.toString}"
+    case Blank => "clear"
+    case Wall  => s"a wall"
     case Goal => "the goal!"
     case Enemy(name, health) => s"a $name with $health health"
     case _ => "oopsy-daisy"
@@ -108,8 +109,8 @@ object SamsAdventureSpeechlet extends Speechlet {
       case Moved(left, right, up, down) =>
         s"to the left of you is ${tileMessage(left)}. " +
         s"to the right of you is ${tileMessage(right)}. " +
-        s"above you is ${tileMessage(right)}. " +
-        s"below you is ${tileMessage(right)}. "
+        s"above you is ${tileMessage(up)}. " +
+        s"below you is ${tileMessage(down)}. "
 
       case Hurt(Enemy(name, enemyHealth), health) => s"you were hurt by a $name. You now have $health health"
 
