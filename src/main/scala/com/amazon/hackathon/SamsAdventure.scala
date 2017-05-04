@@ -29,8 +29,8 @@ object SamsAdventureSpeechlet extends Speechlet {
   def onSessionEnded(request: SessionEndedRequest, session: Session): Unit = ???
 
   private def tileMessage(tile: Tile): String = tile match {
-    case Blank => "clear"
-    case Wall  => s"a wall"
+    case Blank => "empty space"
+    case Wall => s"a wall"
     case Goal => "the goal!"
     case Enemy(name, health) => s"a $name with $health health"
     case _ => "oopsy-daisy"
@@ -53,12 +53,12 @@ object SamsAdventureSpeechlet extends Speechlet {
     }
 
     action match {
-      case x : SystemAction => handleSystemAction(x)
-      case x : SamsAdventureIntent => handleGameAction(x, session, request)
+      case x: SystemAction => handleSystemAction(x)
+      case x: SamsAdventureIntent => handleGameAction(x, session, request)
     }
   }
 
-  def getDirectionFromSlot(slots: Map[String, Slot]) : Direction = {
+  def getDirectionFromSlot(slots: Map[String, Slot]): Direction = {
     println(slots)
     slots.values.find(_.getValue != null).get.getName match {
       case "leftDirection" => Left
@@ -68,7 +68,7 @@ object SamsAdventureSpeechlet extends Speechlet {
     }
   }
 
-  def handleSystemAction(action: SystemAction): SpeechletResponse  = {
+  def handleSystemAction(action: SystemAction): SpeechletResponse = {
     action match {
       case Help =>
         val out = new PlainTextOutputSpeech
@@ -106,11 +106,7 @@ object SamsAdventureSpeechlet extends Speechlet {
 
       case BumpWall => "You walked into a wall, dummy."
 
-      case Moved(left, right, up, down) =>
-        s"to the left of you is ${tileMessage(left)}. " +
-        s"to the right of you is ${tileMessage(right)}. " +
-        s"above you is ${tileMessage(up)}. " +
-        s"below you is ${tileMessage(down)}. "
+      case Moved(left, right, up, down) => locationMessage(left, right, up, down)
 
       case Hurt(Enemy(name, enemyHealth), health) => s"you were hurt by a $name. You now have $health health"
 
@@ -126,16 +122,27 @@ object SamsAdventureSpeechlet extends Speechlet {
     response
   }
 
+  def locationMessage(left: Tile, right: Tile, up: Tile, down: Tile): String = {
+    val map = Map("left" -> left, "right" -> right, "up" -> up, "down" -> down)
+
+    val a: Seq[(Tile, Seq[String])] = map.toSeq.groupBy(_._2).map { case (tile, group) => tile -> group.map(_._1) }.toSeq
+
+    a.map { x => tileMessage(x._1) + " is to your " + directionText(x._2) }.mkString(" ")
+  }
+
+  def directionText(directions: Seq[String]): String = {
+    directions match {
+      case x :: Nil => x
+      case x :: y :: Nil => x + " and " + y
+      case x :: xs => x + ", " + directionText(xs)
+    }
+  }
+
   def onLaunch(request: LaunchRequest, session: Session): SpeechletResponse = {
     session.setAttribute("map", baseMap.toJson.compactPrint)
 
     val welcome = baseMap.describeLocation match {
-      case Moved(left, right, up, down) =>
-        "Welcome to Sam's Adventure!" +
-        s"to the left of you is ${tileMessage(left)}. " +
-        s"to the right of you is ${tileMessage(right)}. " +
-        s"above you is ${tileMessage(right)}. " +
-        s"below you is ${tileMessage(right)}. "
+      case Moved(left, right, up, down) => locationMessage(left, right, up, down)
     }
 
     val response = new SpeechletResponse()
