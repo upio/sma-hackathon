@@ -26,7 +26,9 @@ object SamsAdventureSpeechlet extends Speechlet {
     Array(Blank, Blank, Wall, Blank, Wall)
   ))
 
-  def onSessionEnded(request: SessionEndedRequest, session: Session): Unit = ???
+  def onSessionEnded(request: SessionEndedRequest, session: Session): Unit = {
+
+  }
 
   private def tileMessage(tile: Tile): String = tile match {
     case Blank => "empty space"
