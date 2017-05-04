@@ -33,6 +33,8 @@ package domain {
 
     private def player: Player = tileAt(x, y).asInstanceOf[Player]
 
+    def describeLocation = Moved(tileAt(Left), tileAt(Right), tileAt(Up), tileAt(Down))
+
     def move(direction: Direction): MoveResult = {
       val (newX, newY) = indexAt(direction)
 

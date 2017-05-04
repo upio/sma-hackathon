@@ -13,7 +13,7 @@ import com.amazon.speech.ui.{OutputSpeech, PlainTextOutputSpeech}
 import spray.json._
 import fommil.sjs.FamilyFormats._
 
-object SamsAdventureStreamHandler extends SpeechletRequestStreamHandler(SamsAdventureSpeechlet, Set("amzn1.ask.skill.58a1303c-ee45-485b-a01d-e626a1713fa7").asJava)
+class SamsAdventureStreamHandler extends SpeechletRequestStreamHandler(SamsAdventureSpeechlet, Set("amzn1.ask.skill.58a1303c-ee45-485b-a01d-e626a1713fa7").asJava)
 
 object SamsAdventureSpeechlet extends Speechlet {
 
@@ -27,7 +27,16 @@ object SamsAdventureSpeechlet extends Speechlet {
 
   def onSessionEnded(request: SessionEndedRequest, session: Session): Unit = ???
 
-  private def getAction(request: IntentRequest): SamsAdventureIntent = ???
+  private def getAction(request: IntentRequest): SamsAdventureIntent = {
+    ???
+  }
+
+  private def tileMessage(tile: Tile): String = tile match {
+    case Blank | Wall  => s"a ${tile.toString}"
+    case Goal => "the goal!"
+    case Enemy(name, health) => s"a $name with $health health"
+    case _ => "oopsy-daisy"
+  }
 
   def onIntent(request: IntentRequest, session: Session): SpeechletResponse = {
     val gameMap = session.getAttribute("map").asInstanceOf[String].parseJson.convertTo[GameMap]
@@ -39,12 +48,7 @@ object SamsAdventureSpeechlet extends Speechlet {
 
     session.setAttribute("map", gameMap.toJson.prettyPrint)
 
-    def tileMessage(tile: Tile): String = tile match {
-      case Blank | Wall  => s"a ${tile.toString}"
-      case Goal => "the goal!"
-      case Enemy(name, health) => s"a $name with $health health"
-      case _ => "oopsy-daisy"
-    }
+
 
     val message = result match {
       case NothingThere => "There is nothing to attack"
@@ -67,6 +71,7 @@ object SamsAdventureSpeechlet extends Speechlet {
     }
 
     val response = new SpeechletResponse()
+    response.setShouldEndSession(if (message == "You win!") true else false)
     val speech = new PlainTextOutputSpeech()
     speech.setText(message)
     response.setOutputSpeech(speech)
@@ -76,10 +81,21 @@ object SamsAdventureSpeechlet extends Speechlet {
 
   def onLaunch(request: LaunchRequest, session: Session): SpeechletResponse = {
     session.setAttribute("map", baseMap.toJson.prettyPrint)
+
+    val welcome = baseMap.describeLocation match {
+      case Moved(left, right, up, down) =>
+        "Welcome to Sam's Adventure!" +
+        s"to the left of you is ${tileMessage(left)}. " +
+        s"to the right of you is ${tileMessage(right)}. " +
+        s"above you is ${tileMessage(right)}. " +
+        s"below you is ${tileMessage(right)}. "
+    }
+
     val response = new SpeechletResponse()
     val speech = new PlainTextOutputSpeech()
-    speech.setText("Welcome to Sams Adventure!")
+    speech.setText(welcome)
     response.setOutputSpeech(speech)
+    response.setShouldEndSession(false)
     response
   }
 
@@ -95,6 +111,8 @@ object Scratch extends App {
     Array(Blank, Blank, Player(10), Blank, Blank),
     Array(Blank, Blank, Wall, Blank, Wall)
   ))
+
+
 
   def printAndMap(result: ActionResult): Unit = {
     println(result)
@@ -113,4 +131,7 @@ object Scratch extends App {
   printAndMap(map.move(Right))
   printAndMap(map.move(Right))
   printAndMap(map.move(Right))
+
+  println(map.toJson.compactPrint)
+  println(map.toJson.compactPrint.size)
 }
