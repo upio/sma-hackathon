@@ -31,7 +31,7 @@ object SamsAdventureSpeechlet extends Speechlet {
   private def tileMessage(tile: Tile): String = tile match {
     case Blank => "empty space"
     case Wall => s"a wall"
-    case Goal => "the goal!"
+    case Goal => "the stairs down"
     case Enemy(name, health) => s"a $name with $health health"
     case _ => "oopsy-daisy"
   }
@@ -110,7 +110,7 @@ object SamsAdventureSpeechlet extends Speechlet {
 
       case Hurt(Enemy(name, enemyHealth), health) => s"you were hurt by a $name. You now have $health health"
 
-      case Victory => "You win!"
+      case Victory => "You found the stairs down to the next dungeon. Unfortunately the ghouls are still building it. Come back soon."
     }
 
     val response = new SpeechletResponse()
@@ -123,7 +123,7 @@ object SamsAdventureSpeechlet extends Speechlet {
   }
 
   def locationMessage(left: Tile, right: Tile, up: Tile, down: Tile): String = {
-    val map = Map("east" -> left, "west" -> right, "north" -> up, "south" -> down)
+    val map = Map("west" -> left, "east" -> right, "north" -> up, "south" -> down)
 
     val a: Seq[(Tile, Seq[String])] = map.toSeq.groupBy(_._2).map { case (tile, group) => tile -> group.map(_._1) }.toSeq
 
@@ -135,7 +135,7 @@ object SamsAdventureSpeechlet extends Speechlet {
       case Nil => ""
       case x :: Nil => x
       case x :: y :: Nil => x + " and " + y
-      case x :: xs => x + ", " + directionText(xs)
+      case x :: xs => x + " " + directionText(xs)
     }
   }
 
