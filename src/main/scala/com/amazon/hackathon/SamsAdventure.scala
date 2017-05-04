@@ -111,7 +111,7 @@ object SamsAdventureSpeechlet extends Speechlet {
         s"above you is ${tileMessage(right)}. " +
         s"below you is ${tileMessage(right)}. "
 
-      case Hurt(Enemy(name, enemyHealth), health) => s"you were hurt by a $enemyHealth. You now have $health health"
+      case Hurt(Enemy(name, enemyHealth), health) => s"you were hurt by a $name. You now have $health health"
 
       case Victory => "You win!"
     }
