@@ -8,8 +8,6 @@ package com.amazon.hackathon
   */
 package domain {
 
-  import com.amazon.hackathon.SamsAdventureSpeechlet.Direction
-
   case class GameMap(var x: Int, var y: Int, tiles: Array[Array[Tile]]) {
 
     private def indexAt(direction: Direction) = {

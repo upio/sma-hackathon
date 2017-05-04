@@ -5,6 +5,7 @@ package com.amazon.hackathon
 
 
 import com.amazon.hackathon.domain._
+import com.amazon.speech.slu.Slot
 import com.amazon.speech.speechlet._
 
 import scala.collection.JavaConverters._
@@ -27,10 +28,6 @@ object SamsAdventureSpeechlet extends Speechlet {
 
   def onSessionEnded(request: SessionEndedRequest, session: Session): Unit = ???
 
-  private def getAction(request: IntentRequest): SamsAdventureIntent = {
-    ???
-  }
-
   private def tileMessage(tile: Tile): String = tile match {
     case Blank | Wall  => s"a ${tile.toString}"
     case Goal => "the goal!"
@@ -39,13 +36,16 @@ object SamsAdventureSpeechlet extends Speechlet {
   }
 
   def onIntent(request: IntentRequest, session: Session): SpeechletResponse = {
-    var intent = request.getIntent
+    println(request.getIntent.getName)
+    println(request.getIntent.getSlots.asScala)
 
-    var direction = getDirectionFromSlot(intent.getSlots.keySet().asScala.toSet)
+    val intent = request.getIntent
 
-    var action = intent.getName match {
-      case "moveIntent" => Move
-      case "attackIntent" => Attack
+    val direction = getDirectionFromSlot(intent.getSlots.asScala.toMap)
+
+    val action = intent.getName match {
+      case "moveIntent" => Move(direction)
+      case "attackIntent" => Attack(direction)
       case "AMAZON.StopIntent" => Stop
       case "AMAZON.HelpIntent" => Help
       case "AMAZON.CancelIntent" => Cancel
@@ -57,12 +57,13 @@ object SamsAdventureSpeechlet extends Speechlet {
     }
   }
 
-  def getDirectionFromSlot(slots: Set[String]) : Direction = {
-    slots match {
-      case x if x.contains("leftDirection") => Left
-      case x if x.contains("rightDirection") => Right
-      case x if x.contains("upDirection") => Up
-      case x if x.contains("downDirection") => Down
+  def getDirectionFromSlot(slots: Map[String, Slot]) : Direction = {
+    println(slots)
+    slots.values.find(_.getValue != null).get.getName match {
+      case "leftDirection" => Left
+      case "rightDirection" => Right
+      case "upDirection" => Up
+      case "downDirection" => Down
     }
   }
 
@@ -88,14 +89,12 @@ object SamsAdventureSpeechlet extends Speechlet {
   def handleGameAction(action: SamsAdventureIntent, session: Session, request: IntentRequest): SpeechletResponse = {
     val gameMap = session.getAttribute("map").asInstanceOf[String].parseJson.convertTo[GameMap]
 
-    val result = getAction(request) match {
+    val result = action match {
       case Move(direction) => gameMap.move(direction)
       case Attack(direction) => gameMap.attack(direction)
     }
 
-    session.setAttribute("map", gameMap.toJson.prettyPrint)
-
-
+    session.setAttribute("map", gameMap.toJson.compactPrint)
 
     val message = result match {
       case NothingThere => "There is nothing to attack"
@@ -107,10 +106,10 @@ object SamsAdventureSpeechlet extends Speechlet {
       case BumpWall => "You walked into a wall, dummy."
 
       case Moved(left, right, up, down) =>
-        s"to the left of you is ${tileMessage(left)}." +
-          s"to the right of you is ${tileMessage(right)}" +
-          s"above you is ${tileMessage(right)}" +
-          s"below you is ${tileMessage(right)}"
+        s"to the left of you is ${tileMessage(left)}. " +
+        s"to the right of you is ${tileMessage(right)}. " +
+        s"above you is ${tileMessage(right)}. " +
+        s"below you is ${tileMessage(right)}. "
 
       case Hurt(Enemy(name, enemyHealth), health) => s"you were hurt by a $enemyHealth. You now have $health health"
 
@@ -127,7 +126,7 @@ object SamsAdventureSpeechlet extends Speechlet {
   }
 
   def onLaunch(request: LaunchRequest, session: Session): SpeechletResponse = {
-    session.setAttribute("map", baseMap.toJson.prettyPrint)
+    session.setAttribute("map", baseMap.toJson.compactPrint)
 
     val welcome = baseMap.describeLocation match {
       case Moved(left, right, up, down) =>
@@ -158,8 +157,6 @@ object Scratch extends App {
     Array(Blank, Blank, Player(10), Blank, Blank),
     Array(Blank, Blank, Wall, Blank, Wall)
   ))
-
-
 
   def printAndMap(result: ActionResult): Unit = {
     println(result)
