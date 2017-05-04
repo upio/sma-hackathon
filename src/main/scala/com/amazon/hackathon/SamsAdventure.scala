@@ -9,7 +9,7 @@ import com.amazon.speech.speechlet._
 
 import scala.collection.JavaConverters._
 import com.amazon.speech.speechlet.lambda.SpeechletRequestStreamHandler
-import com.amazon.speech.ui.{OutputSpeech, PlainTextOutputSpeech}
+import com.amazon.speech.ui.{OutputSpeech, PlainTextOutputSpeech, Reprompt}
 import spray.json._
 import fommil.sjs.FamilyFormats._
 
@@ -30,6 +30,59 @@ object SamsAdventureSpeechlet extends Speechlet {
   private def getAction(request: IntentRequest): SamsAdventureIntent = ???
 
   def onIntent(request: IntentRequest, session: Session): SpeechletResponse = {
+    var intent = request.getIntent
+
+    var direction = getDirectionFromSlot(intent.getSlots.keySet().asScala.toSet)
+
+    var action = intent.getName match {
+      case "moveIntent" => Move
+      case "attackIntent" => Attack
+      case "AMAZON.StopIntent" => Stop
+      case "AMAZON.HelpIntent" => Help
+      case "AMAZON.CancelIntent" => Cancel
+    }
+
+    action match {
+      case x : SystemAction => handleSystemAction(x)
+      case x : SamsAdventureIntent => handleGameAction(x, session, request)
+    }
+  }
+
+  def onLaunch(request: LaunchRequest, session: Session): SpeechletResponse = ???
+
+  def onSessionStarted(request: SessionStartedRequest, session: Session): Unit = {
+    session.setAttribute("map", baseMap.toJson.prettyPrint)
+  }
+
+  def getDirectionFromSlot(slots: Set[String]) : Direction = {
+    slots match {
+      case x if x.contains("leftDirection") => Left
+      case x if x.contains("rightDirection") => Right
+      case x if x.contains("upDirection") => Up
+      case x if x.contains("downDirection") => Down
+    }
+  }
+
+  def handleSystemAction(action: SystemAction): SpeechletResponse  = {
+    action match {
+      case Help =>
+        val out = new PlainTextOutputSpeech
+        out.setText("Help me, help you.")
+        SpeechletResponse.newAskResponse(out, new Reprompt)
+      case Stop =>
+        val out = new PlainTextOutputSpeech
+        out.setText("Come back soon.")
+        val s = SpeechletResponse.newAskResponse(out, new Reprompt)
+        s.setShouldEndSession(true)
+        s
+      case Cancel =>
+        val out = new PlainTextOutputSpeech
+        out.setText("Cancel?. Just keep playing.")
+        SpeechletResponse.newAskResponse(out, new Reprompt)
+    }
+  }
+
+  def handleGameAction(action: SamsAdventureIntent, session: Session, request: IntentRequest): SpeechletResponse = {
     val gameMap = session.getAttribute("map").asInstanceOf[String].parseJson.convertTo[GameMap]
 
     val result = getAction(request) match {
@@ -57,9 +110,9 @@ object SamsAdventureSpeechlet extends Speechlet {
 
       case Moved(left, right, up, down) =>
         s"to the left of you is ${tileMessage(left)}." +
-        s"to the right of you is ${tileMessage(right)}" +
-        s"above you is ${tileMessage(right)}" +
-        s"below you is ${tileMessage(right)}"
+          s"to the right of you is ${tileMessage(right)}" +
+          s"above you is ${tileMessage(right)}" +
+          s"below you is ${tileMessage(right)}"
 
       case Hurt(Enemy(name, enemyHealth), health) => s"you were hurt by a $enemyHealth. You now have $health health"
 
@@ -72,12 +125,6 @@ object SamsAdventureSpeechlet extends Speechlet {
     response.setOutputSpeech(speech)
 
     response
-  }
-
-  def onLaunch(request: LaunchRequest, session: Session): SpeechletResponse = ???
-
-  def onSessionStarted(request: SessionStartedRequest, session: Session): Unit = {
-    session.setAttribute("map", baseMap.toJson.prettyPrint)
   }
 }
 

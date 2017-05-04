@@ -8,6 +8,8 @@ package com.amazon.hackathon
   */
 package domain {
 
+  import com.amazon.hackathon.SamsAdventureSpeechlet.Direction
+
   case class GameMap(var x: Int, var y: Int, tiles: Array[Array[Tile]]) {
 
     private def indexAt(direction: Direction) = {
@@ -87,7 +89,14 @@ package domain {
   case object Left extends Direction
   case object Right extends Direction
 
-  sealed trait SamsAdventureIntent
+  sealed trait Action
+
+  sealed trait SystemAction extends Action
+  case object Help extends SystemAction
+  case object Stop extends SystemAction
+  case object Cancel extends SystemAction
+
+  sealed trait SamsAdventureIntent extends Action
   case class Move(direction: Direction) extends SamsAdventureIntent
   case class Attack(direction: Direction) extends SamsAdventureIntent
 
