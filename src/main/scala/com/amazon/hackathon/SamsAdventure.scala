@@ -178,7 +178,6 @@ object SamsAdventureSpeechlet extends Speechlet {
       case Moved(left, right, up, down) => locationMessage(left, right, up, down)
     }
 
-    new SsmlOutputSpeech().setSsml()
     val response = new SpeechletResponse()
     val speech = new PlainTextOutputSpeech()
     speech.setText(welcome)
