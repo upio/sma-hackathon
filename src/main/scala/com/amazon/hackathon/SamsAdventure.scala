@@ -10,7 +10,7 @@ import com.amazon.speech.speechlet._
 
 import scala.collection.JavaConverters._
 import com.amazon.speech.speechlet.lambda.SpeechletRequestStreamHandler
-import com.amazon.speech.ui.{OutputSpeech, PlainTextOutputSpeech, Reprompt}
+import com.amazon.speech.ui.{OutputSpeech, PlainTextOutputSpeech, Reprompt, SsmlOutputSpeech}
 import spray.json._
 import fommil.sjs.FamilyFormats._
 
@@ -92,36 +92,66 @@ object SamsAdventureSpeechlet extends Speechlet {
   def handleGameAction(action: SamsAdventureIntent, session: Session, request: IntentRequest): SpeechletResponse = {
     val gameMap = session.getAttribute("map").asInstanceOf[String].parseJson.convertTo[GameMap]
 
+    //Move or attack
     val result = action match {
       case Move(direction) => gameMap.move(direction)
       case Attack(direction) => gameMap.attack(direction)
     }
 
+    //Enemies attack
+    val updateResults = gameMap.updateEnemies()
+
     session.setAttribute("map", gameMap.toJson.compactPrint)
 
-    val message = result match {
+    val results = result +: updateResults
+
+    val message = resolveResults(results)
+
+    val response = new SpeechletResponse()
+    response.setShouldEndSession(endState(results))
+    val speech = new PlainTextOutputSpeech()
+    speech.setText(message)
+    response.setOutputSpeech(speech)
+
+    response
+  }
+
+  def endState(results : Seq[ActionResult]) : Boolean = {
+    results match {
+      case Nil => false
+      case (_: Dead) :: Nil => true
+      case Victory :: Nil => true
+      case _ :: xs => endState(xs)
+    }
+  }
+
+  def resolveResults(results: Seq[ActionResult]) : String ={
+    results.toList match {
+      case Nil => ""
+      case x :: Nil => resolveResultText(x)
+      case (x:Dead) :: Nil => resolveResultText(x)
+      case x :: xs => resolveResultText(x) + ". " + resolveResults(xs)
+    }
+  }
+
+  def resolveResultText(result : ActionResult) : String = {
+    result match {
       case NothingThere => "There is nothing to attack"
 
       case Killed(Enemy(name, _)) => s"You killed a $name"
 
       case Hit(Enemy(name, health)) => s"You hit the $name, it now has $health health"
 
-      case BumpWall => "You walked into a wall, dummy."
+      case BumpWall => "You walked into a wall dummy."
 
       case Moved(left, right, up, down) => locationMessage(left, right, up, down)
 
       case Hurt(Enemy(name, enemyHealth), health) => s"you were hurt by a $name. You now have $health health"
 
+      case Dead(Enemy(name, eh)) => s"you are dead, Killed by a $name. It stares down at your lifeless body, laughing."
+
       case Victory => "You found the stairs down to the next dungeon. Unfortunately the ghouls are still building it. Come back soon."
     }
-
-    val response = new SpeechletResponse()
-    response.setShouldEndSession(if (message == "You win!") true else false)
-    val speech = new PlainTextOutputSpeech()
-    speech.setText(message)
-    response.setOutputSpeech(speech)
-
-    response
   }
 
   def locationMessage(left: Tile, right: Tile, up: Tile, down: Tile): String = {
@@ -148,6 +178,7 @@ object SamsAdventureSpeechlet extends Speechlet {
       case Moved(left, right, up, down) => locationMessage(left, right, up, down)
     }
 
+    new SsmlOutputSpeech().setSsml()
     val response = new SpeechletResponse()
     val speech = new PlainTextOutputSpeech()
     speech.setText(welcome)

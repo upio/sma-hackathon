@@ -58,8 +58,7 @@ package domain {
           Victory
 
         case e: Enemy =>
-          tiles(x)(y) = player.copy(health = player.health - 1)
-          Hurt(e, player.health)
+          hurtPlayer(e)
       }
     }
 
@@ -79,6 +78,28 @@ package domain {
 
         case _ => NothingThere
       }
+    }
+
+    def hurtPlayer(e : Enemy) : CombatResult = {
+      tiles(x)(y) = player.copy(health = player.health - 1)
+      player.health match {
+        case h if h < 1 => Dead(e)
+        case h => Hurt(e, h)
+      }
+    }
+
+    /**
+      * Update nearby spaces.
+      * Enemies only for now
+      * @return
+      */
+    def updateEnemies(): Seq[CombatResult] = {
+      getDirections.map { tileAt }
+        .collect{case e : Enemy => hurtPlayer(e)}
+    }
+
+    def getDirections : Seq[Direction] = {
+      List(Up, Down, Left, Right)
     }
 
   }
@@ -118,5 +139,8 @@ package domain {
   case object BumpWall extends MoveResult
   case object Victory extends MoveResult
   case class Moved(left: Tile, right: Tile, up: Tile, down: Tile) extends MoveResult
-  case class Hurt(enemy: Enemy, health: Int) extends MoveResult
+
+  sealed trait CombatResult extends MoveResult
+  case class Hurt(enemy: Enemy, health: Int) extends CombatResult
+  case class Dead(enemy: Enemy) extends CombatResult
 }
