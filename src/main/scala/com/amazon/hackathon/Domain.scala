@@ -33,7 +33,21 @@ package domain {
 
     private def player: Player = tileAt(x, y).asInstanceOf[Player]
 
-    def describeLocation = Moved(tileAt(Left), tileAt(Right), tileAt(Up), tileAt(Down))
+    def describeLocation = Ordinal(tileAt(Left), tileAt(Right), tileAt(Up), tileAt(Down))
+
+    def playerLocation : WhereAmIResult = {
+      WhereAmIResult(x,y)
+    }
+
+    def playerHealth : MyHealthResult = {
+      player match {
+        case Player(health) => MyHealthResult(health)
+      }
+    }
+
+    def observe(direction: Direction) : ObserveResult = {
+        ObserveResult(tileAt(direction))
+    }
 
     def move(direction: Direction): MoveResult = {
       val (newX, newY) = indexAt(direction)
@@ -45,7 +59,7 @@ package domain {
           x = newX
           y = newY
 
-          Moved(tileAt(Left), tileAt(Right), tileAt(Up), tileAt(Down))
+          Moved(Ordinal(tileAt(Left), tileAt(Right), tileAt(Up), tileAt(Down)))
 
         case Wall => BumpWall
 
@@ -118,8 +132,17 @@ package domain {
   case object Cancel extends SystemAction
 
   sealed trait SamsAdventureIntent extends Action
-  case class Move(direction: Direction) extends SamsAdventureIntent
-  case class Attack(direction: Direction) extends SamsAdventureIntent
+
+  sealed trait UpdateAction extends SamsAdventureIntent
+  case class Move(direction: Direction) extends UpdateAction
+  case class Attack(direction: Direction) extends UpdateAction
+
+  sealed trait InfoAction extends SamsAdventureIntent
+  case class Observe(direction: Direction) extends InfoAction
+  case object MyHealth extends InfoAction
+  case object WhereAmI extends InfoAction
+  case object DescribeSurroundings extends InfoAction
+  //case object Listen extends InfoAction
 
   sealed trait Tile
   case object Blank extends Tile
@@ -138,9 +161,32 @@ package domain {
   sealed trait MoveResult extends ActionResult
   case object BumpWall extends MoveResult
   case object Victory extends MoveResult
-  case class Moved(left: Tile, right: Tile, up: Tile, down: Tile) extends MoveResult
+  case class Moved(directions: Ordinal) extends MoveResult
 
   sealed trait CombatResult extends MoveResult
   case class Hurt(enemy: Enemy, health: Int) extends CombatResult
   case class Dead(enemy: Enemy) extends CombatResult
+
+  sealed trait InfoResult extends ActionResult
+  case class WhereAmIResult(x :Int, y : Int) extends InfoResult
+  case class MyHealthResult(myHealth : Int) extends InfoResult
+  case class ObserveResult(tile: Tile) extends InfoResult
+  case class DescribeSurroundingsResult(ordinal: Ordinal) extends InfoResult
+
+  sealed trait SessionState
+  case object EndSession extends SessionState
+  case object OpenSession extends SessionState
+
+  case class Ordinal(left: Tile, right: Tile, up: Tile, down: Tile)
+
+  sealed trait GameResponse
+
+  case class GameUpdateResponse(sessionState: SessionState, gameSpeechOutput: GameSpeechOutput, gameMap: GameMap) extends GameResponse
+  case class GameInfoResponse(gameSpeechOutput: GameSpeechOutput) extends GameResponse
+
+  sealed trait GameSpeechOutput
+
+  case class SSMLOutput(message: String) extends GameSpeechOutput
+  case class PlainTextOutput(message: String) extends GameSpeechOutput
+
 }

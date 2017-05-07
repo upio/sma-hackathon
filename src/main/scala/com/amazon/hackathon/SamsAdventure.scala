@@ -44,11 +44,13 @@ object SamsAdventureSpeechlet extends Speechlet {
 
     val intent = request.getIntent
 
-    val direction = getDirectionFromSlot(intent.getSlots.asScala.toMap)
-
     val action = intent.getName match {
-      case "moveIntent" => Move(direction)
-      case "attackIntent" => Attack(direction)
+      case "moveIntent" => Move(getDirectionFromSlot(intent.getSlots.asScala.toMap))
+      case "attackIntent" => Attack(getDirectionFromSlot(intent.getSlots.asScala.toMap))
+      case "observeIntent" => Observe(getDirectionFromSlot(intent.getSlots.asScala.toMap))
+      case "whereAmIIntent" => WhereAmI
+      case "describeSurroundingsIntent" => DescribeSurroundings
+      case "myHealthIntent" => MyHealth
       case "AMAZON.StopIntent" => Stop
       case "AMAZON.HelpIntent" => Help
       case "AMAZON.CancelIntent" => Cancel
@@ -94,6 +96,44 @@ object SamsAdventureSpeechlet extends Speechlet {
 
     //Move or attack
     val result = action match {
+      case x : UpdateAction => handleUpdateAction(x, gameMap)
+      case x : InfoAction => handleInfoAction(x, gameMap)
+    }
+
+    val response = new SpeechletResponse()
+
+    val speech = result match {
+      case GameUpdateResponse(sessionState, gameSpeechOutput, newGameMap) =>
+        session.setAttribute("map", newGameMap.toJson.compactPrint)
+        response.setShouldEndSession(sessionState match {
+          case EndSession => true
+          case OpenSession => false
+        })
+        gameSpeechOutput
+      case GameInfoResponse(gameSpeechOutput) =>
+        response.setShouldEndSession(false)
+        gameSpeechOutput
+    }
+
+    val speechObj = speech match {
+      case PlainTextOutput(message) =>
+        val s = new PlainTextOutputSpeech()
+        s.setText(message)
+        s
+      case SSMLOutput(message) =>
+        val s = new SsmlOutputSpeech()
+        s.setSsml(message)
+        s
+    }
+
+    response.setOutputSpeech(speechObj)
+
+    response
+  }
+
+  def handleUpdateAction(action: UpdateAction, gameMap: GameMap) : GameUpdateResponse = {
+    //Move or attack
+    val result = action match {
       case Move(direction) => gameMap.move(direction)
       case Attack(direction) => gameMap.attack(direction)
     }
@@ -101,26 +141,26 @@ object SamsAdventureSpeechlet extends Speechlet {
     //Enemies attack
     val updateResults = gameMap.updateEnemies()
 
-    session.setAttribute("map", gameMap.toJson.compactPrint)
-
     val results = result +: updateResults
 
-    val message = resolveResults(results)
-
-    val response = new SpeechletResponse()
-    response.setShouldEndSession(endState(results))
-    val speech = new PlainTextOutputSpeech()
-    speech.setText(message)
-    response.setOutputSpeech(speech)
-
-    response
+    GameUpdateResponse(endState(results), PlainTextOutput(resolveResults(results)), gameMap)
   }
 
-  def endState(results : Seq[ActionResult]) : Boolean = {
+  def handleInfoAction(action: InfoAction, gameMap: GameMap) : GameInfoResponse = {
+    val result = action match {
+      case Observe(direction) => gameMap.observe(direction)
+      case MyHealth => gameMap.playerHealth
+      case WhereAmI => gameMap.playerLocation
+      case DescribeSurroundings => DescribeSurroundingsResult(gameMap.describeLocation)
+    }
+    GameInfoResponse(PlainTextOutput(resolveResultText(result)))
+  }
+
+  def endState(results : Seq[ActionResult]) : SessionState = {
     results match {
-      case Nil => false
-      case (_: Dead) :: Nil => true
-      case Victory :: Nil => true
+      case Nil => OpenSession
+      case (_: Dead) :: xs => EndSession
+      case Victory :: xs => EndSession
       case _ :: xs => endState(xs)
     }
   }
@@ -129,7 +169,7 @@ object SamsAdventureSpeechlet extends Speechlet {
     results.toList match {
       case Nil => ""
       case x :: Nil => resolveResultText(x)
-      case (x:Dead) :: Nil => resolveResultText(x)
+      case (x:Dead) :: y => resolveResultText(x)
       case x :: xs => resolveResultText(x) + ". " + resolveResults(xs)
     }
   }
@@ -144,20 +184,39 @@ object SamsAdventureSpeechlet extends Speechlet {
 
       case BumpWall => "You walked into a wall dummy."
 
-      case Moved(left, right, up, down) => locationMessage(left, right, up, down)
+      case Moved(directions) => locationMessage(directions, shortResult = true)
 
       case Hurt(Enemy(name, enemyHealth), health) => s"you were hurt by a $name. You now have $health health"
 
       case Dead(Enemy(name, eh)) => s"you are dead, Killed by a $name. It stares down at your lifeless body, laughing."
 
       case Victory => "You found the stairs down to the next dungeon. Unfortunately the ghouls are still building it. Come back soon."
+
+      case MyHealthResult(health) => s"You have $health"
+
+      case WhereAmIResult(x,y) => s"You are at position $x, $y"
+
+      case ObserveResult(tile) => tileMessage(tile)
+
+      case DescribeSurroundingsResult(directions) => locationMessage(directions, shortResult = false)
     }
   }
 
-  def locationMessage(left: Tile, right: Tile, up: Tile, down: Tile): String = {
-    val map = Map("west" -> left, "east" -> right, "north" -> up, "south" -> down)
+  def ignoreTileOnShortResult (tile: Tile) : Boolean = {
+    tile match {
+      case Blank => true
+      case _ => false
+    }
+  }
 
-    val a: Seq[(Tile, Seq[String])] = map.toSeq.groupBy(_._2).map { case (tile, group) => tile -> group.map(_._1) }.toSeq
+  def locationMessage(directions:  Ordinal, shortResult: Boolean): String = {
+    val map = directions match {
+      case Ordinal(left,right,up,down) => Map ("west" -> left, "east" -> right, "north" -> up, "south" -> down)
+    }
+
+    val a: Seq[(Tile, Seq[String])] = map.toSeq.groupBy(_._2)
+      .filter{ x => !shortResult || !ignoreTileOnShortResult(x._1)}
+      .map { case (tile, group) => tile -> group.map(_._1) }.toSeq
 
     a.map { x => tileMessage(x._1) + " is to the " + directionText(x._2.toList) }.mkString(". ")
   }
@@ -174,9 +233,7 @@ object SamsAdventureSpeechlet extends Speechlet {
   def onLaunch(request: LaunchRequest, session: Session): SpeechletResponse = {
     session.setAttribute("map", baseMap.toJson.compactPrint)
 
-    val welcome = baseMap.describeLocation match {
-      case Moved(left, right, up, down) => locationMessage(left, right, up, down)
-    }
+    val welcome = locationMessage(baseMap.describeLocation, shortResult = false)
 
     val response = new SpeechletResponse()
     val speech = new PlainTextOutputSpeech()
