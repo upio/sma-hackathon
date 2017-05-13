@@ -145,7 +145,10 @@ package domain {
   //case object Listen extends InfoAction
 
   sealed trait Tile
-  case object Blank extends Tile
+
+  sealed trait TrivialTile extends Tile
+
+  case object Blank extends TrivialTile
   case object Wall extends Tile
   case class Enemy(name: String, health: Int) extends Tile
   case class Player(health: Int) extends Tile
@@ -173,15 +176,17 @@ package domain {
   case class ObserveResult(tile: Tile) extends InfoResult
   case class DescribeSurroundingsResult(ordinal: Ordinal) extends InfoResult
 
+  case class Ordinal(left: Tile, right: Tile, up: Tile, down: Tile)
+
   sealed trait SessionState
   case object EndSession extends SessionState
   case object OpenSession extends SessionState
 
-  case class Ordinal(left: Tile, right: Tile, up: Tile, down: Tile)
-
   sealed trait GameResponse
 
-  case class GameUpdateResponse(sessionState: SessionState, gameSpeechOutput: GameSpeechOutput, gameMap: GameMap) extends GameResponse
+  case class SessionUpdateResponse(sessionState: SessionState, gameSpeechOutput: GameSpeechOutput) extends GameResponse
+  case class GameUpdateResponse(sessionState: SessionState, gameSpeechOutput: GameSpeechOutput, gameMap: GameMap)
+    extends GameResponse
   case class GameInfoResponse(gameSpeechOutput: GameSpeechOutput) extends GameResponse
 
   sealed trait GameSpeechOutput

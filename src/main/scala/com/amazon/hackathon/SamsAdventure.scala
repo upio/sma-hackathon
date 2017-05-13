@@ -10,7 +10,7 @@ import com.amazon.speech.speechlet._
 
 import scala.collection.JavaConverters._
 import com.amazon.speech.speechlet.lambda.SpeechletRequestStreamHandler
-import com.amazon.speech.ui.{OutputSpeech, PlainTextOutputSpeech, Reprompt, SsmlOutputSpeech}
+import com.amazon.speech.ui.{PlainTextOutputSpeech, Reprompt, SsmlOutputSpeech, OutputSpeech}
 import spray.json._
 import fommil.sjs.FamilyFormats._
 
@@ -28,14 +28,6 @@ object SamsAdventureSpeechlet extends Speechlet {
 
   def onSessionEnded(request: SessionEndedRequest, session: Session): Unit = {
 
-  }
-
-  private def tileMessage(tile: Tile): String = tile match {
-    case Blank => "empty space"
-    case Wall => s"a wall"
-    case Goal => "the stairs down"
-    case Enemy(name, health) => s"a $name with $health health"
-    case _ => "oopsy-daisy"
   }
 
   def onIntent(request: IntentRequest, session: Session): SpeechletResponse = {
@@ -56,9 +48,41 @@ object SamsAdventureSpeechlet extends Speechlet {
       case "AMAZON.CancelIntent" => Cancel
     }
 
-    action match {
+    val result = action match {
       case x: SystemAction => handleSystemAction(x)
       case x: SamsAdventureIntent => handleGameAction(x, session, request)
+    }
+
+    buildResponse(result)
+  }
+
+  def buildResponse(gameResponse: GameResponse) : SpeechletResponse = {
+    gameResponse match {
+      case SessionUpdateResponse(sessionState, gameSpeechOutput) =>
+        getSpeechletResponse(sessionState, gameSpeechOutput)
+      case GameUpdateResponse(sessionState, gameSpeechOutput, _) =>
+        getSpeechletResponse(sessionState, gameSpeechOutput)
+      case GameInfoResponse(gameSpeechOutput) =>
+        getSpeechletResponse(OpenSession, gameSpeechOutput)
+    }
+  }
+
+  def getSpeechletResponse(sessionState: SessionState, gameSpeechOutput: GameSpeechOutput) : SpeechletResponse = {
+    new SpeechletResponse(){
+      setShouldEndSession(sessionState match {
+        case EndSession => true
+        case OpenSession => false
+      })
+      setOutputSpeech(getSpeechOutput(gameSpeechOutput))
+    }
+  }
+
+  def getSpeechOutput(gameSpeechOutput: GameSpeechOutput) : OutputSpeech = {
+    gameSpeechOutput match {
+      case PlainTextOutput(message) =>
+        new PlainTextOutputSpeech() { setText(message)}
+      case SSMLOutput(message) =>
+        new SsmlOutputSpeech(){ setSsml(message) }
     }
   }
 
@@ -72,26 +96,18 @@ object SamsAdventureSpeechlet extends Speechlet {
     }
   }
 
-  def handleSystemAction(action: SystemAction): SpeechletResponse = {
+  def handleSystemAction(action: SystemAction): GameResponse = {
     action match {
       case Help =>
-        val out = new PlainTextOutputSpeech
-        out.setText("Help me, help you.")
-        SpeechletResponse.newAskResponse(out, new Reprompt)
+        GameInfoResponse(PlainTextOutput("Help me, help you."))
       case Stop =>
-        val out = new PlainTextOutputSpeech
-        out.setText("Come back soon.")
-        val s = SpeechletResponse.newAskResponse(out, new Reprompt)
-        s.setShouldEndSession(true)
-        s
+        SessionUpdateResponse(EndSession, PlainTextOutput("Come back soon."))
       case Cancel =>
-        val out = new PlainTextOutputSpeech
-        out.setText("Cancel?. Just keep playing.")
-        SpeechletResponse.newAskResponse(out, new Reprompt)
+        GameInfoResponse(PlainTextOutput("Cancel?. Just keep playing."))
     }
   }
 
-  def handleGameAction(action: SamsAdventureIntent, session: Session, request: IntentRequest): SpeechletResponse = {
+  def handleGameAction(action: SamsAdventureIntent, session: Session, request: IntentRequest): GameResponse = {
     val gameMap = session.getAttribute("map").asInstanceOf[String].parseJson.convertTo[GameMap]
 
     //Move or attack
@@ -100,35 +116,13 @@ object SamsAdventureSpeechlet extends Speechlet {
       case x : InfoAction => handleInfoAction(x, gameMap)
     }
 
-    val response = new SpeechletResponse()
-
-    val speech = result match {
-      case GameUpdateResponse(sessionState, gameSpeechOutput, newGameMap) =>
+    result match {
+      case GameUpdateResponse(_, _, newGameMap) =>
         session.setAttribute("map", newGameMap.toJson.compactPrint)
-        response.setShouldEndSession(sessionState match {
-          case EndSession => true
-          case OpenSession => false
-        })
-        gameSpeechOutput
-      case GameInfoResponse(gameSpeechOutput) =>
-        response.setShouldEndSession(false)
-        gameSpeechOutput
+      case _ =>
     }
 
-    val speechObj = speech match {
-      case PlainTextOutput(message) =>
-        val s = new PlainTextOutputSpeech()
-        s.setText(message)
-        s
-      case SSMLOutput(message) =>
-        val s = new SsmlOutputSpeech()
-        s.setSsml(message)
-        s
-    }
-
-    response.setOutputSpeech(speechObj)
-
-    response
+    result
   }
 
   def handleUpdateAction(action: UpdateAction, gameMap: GameMap) : GameUpdateResponse = {
@@ -143,7 +137,7 @@ object SamsAdventureSpeechlet extends Speechlet {
 
     val results = result +: updateResults
 
-    GameUpdateResponse(endState(results), PlainTextOutput(resolveResults(results)), gameMap)
+    GameUpdateResponse(endState(results), PlainTextOutput(TextEngine.resolveResults(results)), gameMap)
   }
 
   def handleInfoAction(action: InfoAction, gameMap: GameMap) : GameInfoResponse = {
@@ -153,7 +147,7 @@ object SamsAdventureSpeechlet extends Speechlet {
       case WhereAmI => gameMap.playerLocation
       case DescribeSurroundings => DescribeSurroundingsResult(gameMap.describeLocation)
     }
-    GameInfoResponse(PlainTextOutput(resolveResultText(result)))
+    GameInfoResponse(PlainTextOutput(TextEngine.resolveResultText(result)))
   }
 
   def endState(results : Seq[ActionResult]) : SessionState = {
@@ -165,82 +159,12 @@ object SamsAdventureSpeechlet extends Speechlet {
     }
   }
 
-  def resolveResults(results: Seq[ActionResult]) : String ={
-    results.toList match {
-      case Nil => ""
-      case x :: Nil => resolveResultText(x)
-      case (x:Dead) :: y => resolveResultText(x)
-      case x :: xs => resolveResultText(x) + ". " + resolveResults(xs)
-    }
-  }
-
-  def resolveResultText(result : ActionResult) : String = {
-    result match {
-      case NothingThere => "There is nothing to attack"
-
-      case Killed(Enemy(name, _)) => s"You killed a $name"
-
-      case Hit(Enemy(name, health)) => s"You hit the $name, it now has $health health"
-
-      case BumpWall => "You walked into a wall dummy."
-
-      case Moved(directions) => locationMessage(directions, shortResult = true)
-
-      case Hurt(Enemy(name, enemyHealth), health) => s"you were hurt by a $name. You now have $health health"
-
-      case Dead(Enemy(name, eh)) => s"you are dead, Killed by a $name. It stares down at your lifeless body, laughing."
-
-      case Victory => "You found the stairs down to the next dungeon. Unfortunately the ghouls are still building it. Come back soon."
-
-      case MyHealthResult(health) => s"You have $health"
-
-      case WhereAmIResult(x,y) => s"You are at position $x, $y"
-
-      case ObserveResult(tile) => tileMessage(tile)
-
-      case DescribeSurroundingsResult(directions) => locationMessage(directions, shortResult = false)
-    }
-  }
-
-  def ignoreTileOnShortResult (tile: Tile) : Boolean = {
-    tile match {
-      case Blank => true
-      case _ => false
-    }
-  }
-
-  def locationMessage(directions:  Ordinal, shortResult: Boolean): String = {
-    val map = directions match {
-      case Ordinal(left,right,up,down) => Map ("west" -> left, "east" -> right, "north" -> up, "south" -> down)
-    }
-
-    val a: Seq[(Tile, Seq[String])] = map.toSeq.groupBy(_._2)
-      .filter{ x => !shortResult || !ignoreTileOnShortResult(x._1)}
-      .map { case (tile, group) => tile -> group.map(_._1) }.toSeq
-
-    a.map { x => tileMessage(x._1) + " is to the " + directionText(x._2.toList) }.mkString(". ")
-  }
-
-  def directionText(directions: List[String]): String = {
-    directions match {
-      case Nil => ""
-      case x :: Nil => x
-      case x :: y :: Nil => x + " and " + y
-      case x :: xs => x + " " + directionText(xs)
-    }
-  }
-
   def onLaunch(request: LaunchRequest, session: Session): SpeechletResponse = {
     session.setAttribute("map", baseMap.toJson.compactPrint)
 
-    val welcome = locationMessage(baseMap.describeLocation, shortResult = false)
+    val welcome = TextEngine.locationMessage(TextEngine.ordinalGroupByTile(baseMap.describeLocation))
 
-    val response = new SpeechletResponse()
-    val speech = new PlainTextOutputSpeech()
-    speech.setText(welcome)
-    response.setOutputSpeech(speech)
-    response.setShouldEndSession(false)
-    response
+    buildResponse(GameInfoResponse(PlainTextOutput(welcome)))
   }
 
   def onSessionStarted(request: SessionStartedRequest, session: Session): Unit = {
