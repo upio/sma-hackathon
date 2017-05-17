@@ -142,7 +142,12 @@ package domain {
   case object MyHealth extends InfoAction
   case object WhereAmI extends InfoAction
   case object DescribeSurroundings extends InfoAction
+  case object BeScared extends InfoAction
   //case object Listen extends InfoAction
+
+  case class PromptAction(waitState : String, promptResponse: PromptResponse) extends Action
+
+  case object UnknownAction extends Action
 
   sealed trait Tile
 
@@ -175,6 +180,7 @@ package domain {
   case class MyHealthResult(myHealth : Int) extends InfoResult
   case class ObserveResult(tile: Tile) extends InfoResult
   case class DescribeSurroundingsResult(ordinal: Ordinal) extends InfoResult
+  case object IsScared extends InfoResult
 
   case class Ordinal(left: Tile, right: Tile, up: Tile, down: Tile)
 
@@ -189,9 +195,20 @@ package domain {
     extends GameResponse
   case class GameInfoResponse(gameSpeechOutput: GameSpeechOutput) extends GameResponse
 
+  sealed trait PromptUpdateResponse
+
+  case class PromptFinishedResponse(sessionState: SessionState, gameSpeechOutput: GameSpeechOutput) extends PromptUpdateResponse
+  case class PromptOpenResponse(sessionState: SessionState, gameSpeechOutput: GameSpeechOutput, waitPromptState: String) extends PromptUpdateResponse
+
   sealed trait GameSpeechOutput
 
   case class SSMLOutput(message: String) extends GameSpeechOutput
   case class PlainTextOutput(message: String) extends GameSpeechOutput
+
+  sealed trait PromptResponse
+
+  case object Yes extends PromptResponse
+  case object No extends PromptResponse
+  case object Unknown extends PromptResponse
 
 }

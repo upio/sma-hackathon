@@ -4,13 +4,13 @@
 package com.amazon.hackathon
 
 
-import com.amazon.hackathon.domain._
+import com.amazon.hackathon.domain.{BeScared, _}
 import com.amazon.speech.slu.Slot
 import com.amazon.speech.speechlet._
 
 import scala.collection.JavaConverters._
 import com.amazon.speech.speechlet.lambda.SpeechletRequestStreamHandler
-import com.amazon.speech.ui.{PlainTextOutputSpeech, Reprompt, SsmlOutputSpeech, OutputSpeech}
+import com.amazon.speech.ui.{OutputSpeech, PlainTextOutputSpeech, Reprompt, SsmlOutputSpeech}
 import spray.json._
 import fommil.sjs.FamilyFormats._
 
@@ -34,26 +34,38 @@ object SamsAdventureSpeechlet extends Speechlet {
     println(request.getIntent.getName)
     println(request.getIntent.getSlots.asScala)
 
+    val promptWait = getPromptWaitState(session)
+
     val intent = request.getIntent
 
     val action = intent.getName match {
+      case "AMAZON.StopIntent" => Stop
+      case "AMAZON.HelpIntent" => Help
+      case "AMAZON.CancelIntent" => Cancel
+        //if currently in a prompt, don't accept any external intents
+      case i if !Option(promptWait).getOrElse("").isEmpty =>
+        i match {
+          case "confirmPromptIntent" => PromptAction(promptWait, getPromptConfirmationFromSlot(intent.getSlots.asScala.toMap))
+          case _ => PromptAction(promptWait, Unknown)
+        }
       case "moveIntent" => Move(getDirectionFromSlot(intent.getSlots.asScala.toMap))
       case "attackIntent" => Attack(getDirectionFromSlot(intent.getSlots.asScala.toMap))
       case "observeIntent" => Observe(getDirectionFromSlot(intent.getSlots.asScala.toMap))
       case "whereAmIIntent" => WhereAmI
       case "describeSurroundingsIntent" => DescribeSurroundings
       case "myHealthIntent" => MyHealth
-      case "AMAZON.StopIntent" => Stop
-      case "AMAZON.HelpIntent" => Help
-      case "AMAZON.CancelIntent" => Cancel
+      case "scaredIntent" => setPromptWaitState(session, "SCARED_HUG")
+                              BeScared
+      case _ => UnknownAction
     }
 
-    val result = action match {
+    buildResponse(action match {
       case x: SystemAction => handleSystemAction(x)
       case x: SamsAdventureIntent => handleGameAction(x, session, request)
-    }
-
-    buildResponse(result)
+      case PromptAction("START_READY", response) => handlePromptResponse(session,handleStartReadyPrompt(response))
+      case PromptAction("SCARED_HUG", response) => handlePromptResponse(session,handleScaredHugPrompt(response))
+      case UnknownAction | _ => GameInfoResponse(PlainTextOutput("Huh, please repeat that. You know you can always ask me for help."))
+    })
   }
 
   def buildResponse(gameResponse: GameResponse) : SpeechletResponse = {
@@ -82,7 +94,7 @@ object SamsAdventureSpeechlet extends Speechlet {
       case PlainTextOutput(message) =>
         new PlainTextOutputSpeech() { setText(message)}
       case SSMLOutput(message) =>
-        new SsmlOutputSpeech(){ setSsml(message) }
+        new SsmlOutputSpeech(){ setSsml("<speak>" + message + "</speak>") }
     }
   }
 
@@ -93,6 +105,15 @@ object SamsAdventureSpeechlet extends Speechlet {
       case "rightDirection" => Right
       case "upDirection" => Up
       case "downDirection" => Down
+    }
+  }
+
+  def getPromptConfirmationFromSlot(slots: Map[String, Slot]): PromptResponse = {
+    println(slots)
+    slots.values.find(_.getValue != null).get.getName match {
+      case "yesSlot" => Yes
+      case "noSlot" => No
+      case _ => Unknown
     }
   }
 
@@ -125,6 +146,19 @@ object SamsAdventureSpeechlet extends Speechlet {
     result
   }
 
+  def handlePromptResponse(session: Session, promptUpdateResponse: PromptUpdateResponse) : SessionUpdateResponse = {
+    promptUpdateResponse match {
+        //finish current prompt
+      case PromptFinishedResponse(sessionState, gameSpeechOutput) =>
+        clearPromptWaitState(session)
+        SessionUpdateResponse(sessionState, gameSpeechOutput)
+        //maintain or chain prompts
+      case PromptOpenResponse(sessionState, gameSpeechOutput, waitPromptState) =>
+        setPromptWaitState(session, waitPromptState)
+        SessionUpdateResponse(sessionState, gameSpeechOutput)
+    }
+  }
+
   def handleUpdateAction(action: UpdateAction, gameMap: GameMap) : GameUpdateResponse = {
     //Move or attack
     val result = action match {
@@ -146,6 +180,7 @@ object SamsAdventureSpeechlet extends Speechlet {
       case MyHealth => gameMap.playerHealth
       case WhereAmI => gameMap.playerLocation
       case DescribeSurroundings => DescribeSurroundingsResult(gameMap.describeLocation)
+      case BeScared => IsScared
     }
     GameInfoResponse(PlainTextOutput(TextEngine.resolveResultText(result)))
   }
@@ -159,13 +194,45 @@ object SamsAdventureSpeechlet extends Speechlet {
     }
   }
 
+  def handleStartReadyPrompt(promptResponse: PromptResponse) : PromptUpdateResponse = {
+    promptResponse match {
+      case Yes => PromptFinishedResponse(OpenSession,
+        SSMLOutput("<emphasis level=\"reduced\"><prosody volume=\"x-loud\" rate=\"fast\">Fine</prosody></emphasis>,<break strength=\"x-strong\"/>" +
+          "but I am coming with you. <break strength=\"x-strong\"/><prosody volume=\"x-soft\">The treasure deep in the dungeon will make up for it anyways.</prosody><break strength=\"x-strong\"/>" +
+          "Head down those stairs and lets get this over with. <break strength=\"x-strong\"/> I told you it was going to be dark.<break strength=\"x-strong\"/><break strength=\"x-strong\"/><break strength=\"x-strong\"/>" +
+          "ask me about your surroundings if you want know what my sensors \"see\"?"))
+      case No => PromptFinishedResponse(EndSession, PlainTextOutput("Well, goodbye I guess"))
+      case Unknown => PromptOpenResponse(OpenSession, PlainTextOutput("Huh? Speak up. I can't understand you. Please repeat."), "START_READY")
+    }
+  }
+
+  def handleScaredHugPrompt(promptResponse: PromptResponse) : PromptUpdateResponse = {
+    promptResponse match {
+      case Yes => PromptFinishedResponse(OpenSession,
+        PlainTextOutput("Ohh suck it up, this was your idea in the first place"))
+      case No => PromptFinishedResponse(OpenSession, PlainTextOutput("Well, ok then"))
+      case Unknown => PromptFinishedResponse(OpenSession, PlainTextOutput("Huh? Anyways, shall we continue?"))
+    }
+  }
+
   def onLaunch(request: LaunchRequest, session: Session): SpeechletResponse = {
     session.setAttribute("map", baseMap.toJson.compactPrint)
+    setPromptWaitState(session, "START_READY")
 
-    val welcome = TextEngine.locationMessage(TextEngine.ordinalGroupByTile(baseMap.describeLocation))
+    val welcome =
+      SSMLOutput("<emphasis level=\"reduced\"><prosody volume=\"x-loud\">wait!!</prosody></emphasis><break strength=\"x-strong\"/>Slow down <emphasis level=\"reduced\"><prosody volume=\"x-loud\">Hero.</prosody></emphasis><break strength=\"x-strong\"/>You won't be able to see anything in there. <emphasis level=\"reduced\"><prosody volume=\"loud\">This is your last chance to turn around</prosody></emphasis><break strength=\"x-strong\"/><break strength=\"x-strong\"/>Are you sure you want to enter the dungeon?") //TextEngine.locationMessage(TextEngine.ordinalGroupByTile(baseMap.describeLocation))
 
-    buildResponse(GameInfoResponse(PlainTextOutput(welcome)))
+    buildResponse(GameInfoResponse(welcome))
   }
+
+  def setPromptWaitState(session: Session, state : String) : Unit =
+    session.setAttribute("promptWaitState", state)
+
+  def clearPromptWaitState(session : Session) : Unit =
+    session.removeAttribute("promptWaitState")
+
+  def getPromptWaitState(session: Session) : String =
+    session.getAttribute("promptWaitState").asInstanceOf[String]
 
   def onSessionStarted(request: SessionStartedRequest, session: Session): Unit = {
   }

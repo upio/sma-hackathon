@@ -11,7 +11,7 @@ object TextEngine {
 
       case Hit(Enemy(name, health)) => s"You hit the $name, it now has $health health"
 
-      case BumpWall => "You walked into a wall dummy."
+      case BumpWall => "You walked into a wall dummy. You can ask for me what my sensors see."
 
       case Moved(directions) => locationMessage(ignoreTrivial(ordinalGroupByTile(directions)))
 
@@ -19,15 +19,17 @@ object TextEngine {
 
       case Dead(Enemy(name, eh)) => s"you are dead, Killed by a $name. It stares down at your lifeless body, laughing."
 
-      case Victory => "You found the stairs down to the next dungeon. Unfortunately the ghouls are still building it. Come back soon."
+      case Victory => "We found the stairs down to the next dungeon. Unfortunately it appears that ghouls are still building it. Lets try again later"
 
       case MyHealthResult(health) => s"You have $health"
 
-      case WhereAmIResult(x,y) => s"You are at position $x, $y"
+      case WhereAmIResult(x,y) => s"We are at position $x, $y. Whatever that means."
 
       case ObserveResult(tile) => tileMessage(tile)
 
       case DescribeSurroundingsResult(directions) => locationMessage(ordinalGroupByTile(directions))
+
+      case IsScared => "Don't worry hero, we'll get through this. Remember you can always ask me to describe your surroundings or ask for help. Would you like a hug?"
     }
   }
 
