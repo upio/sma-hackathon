@@ -72,7 +72,7 @@ package domain {
           Victory
 
         case e: Enemy =>
-          hurtPlayer(e)
+          hurtPlayer(OrdinalEnemy(e, direction))
       }
     }
 
@@ -83,18 +83,18 @@ package domain {
         case enemy @ Enemy(name, health) =>
           if (health == 1) {
             setTile(enemyX, enemyY)(Blank)
-            Killed(enemy)
+            Killed(OrdinalEnemy(enemy, direction))
           }
           else {
             setTile(enemyX, enemyY)(Enemy(name, health - 1))
-            Hit(Enemy(name, health - 1))
+            Hit(OrdinalEnemy(Enemy(name, health - 1), direction))
           }
 
         case _ => NothingThere
       }
     }
 
-    def hurtPlayer(e : Enemy) : CombatResult = {
+    def hurtPlayer(e : OrdinalEnemy) : CombatResult = {
       tiles(x)(y) = player.copy(health = player.health - 1)
       player.health match {
         case h if h < 1 => Dead(e)
@@ -108,8 +108,8 @@ package domain {
       * @return
       */
     def updateEnemies(): Seq[CombatResult] = {
-      getDirections.map { tileAt }
-        .collect{case e : Enemy => hurtPlayer(e)}
+      getDirections.map { x => (tileAt(x), x) }
+        .collect{case (e : Enemy, d) => hurtPlayer(OrdinalEnemy(e,d ))}
     }
 
     def getDirections : Seq[Direction] = {
@@ -151,20 +151,25 @@ package domain {
 
   sealed trait Tile
 
-  sealed trait TrivialTile extends Tile
+  sealed trait TileImportance
+  sealed trait TrivialTile extends TileImportance
 
-  case object Blank extends TrivialTile
+  case object Blank extends Tile with TrivialTile
   case object Wall extends Tile
   case class Enemy(name: String, health: Int) extends Tile
   case class Player(health: Int) extends Tile
   case object Goal extends Tile
 
+  sealed trait OrdinalTile
+  case class OrdinalPlainTile(tile: Tile, direction: Direction) extends OrdinalTile
+  case class OrdinalEnemy(enemy: Enemy, direction: Direction) extends OrdinalTile
+
   sealed trait ActionResult
 
   sealed trait AttackResult extends ActionResult
   case object NothingThere extends AttackResult
-  case class Killed(enemy: Enemy) extends AttackResult
-  case class Hit(enemy: Enemy) extends AttackResult
+  case class Killed(enemy: OrdinalEnemy) extends AttackResult
+  case class Hit(enemy: OrdinalEnemy) extends AttackResult
 
   case class HurtHit(hurt: Hurt, hit: Hit) extends ActionResult
   case class MultiHurtHit(multiHurt: MultiHurt, hit: Hit) extends ActionResult
@@ -175,9 +180,9 @@ package domain {
   case class Moved(directions: Ordinal) extends MoveResult
 
   sealed trait CombatResult extends MoveResult
-  case class Hurt(enemy: Enemy, health: Int) extends CombatResult
-  case class MultiHurt(enemy: Enemy, health: Int, time: Int) extends CombatResult
-  case class Dead(enemy: Enemy) extends CombatResult
+  case class Hurt(enemy: OrdinalEnemy, health: Int) extends CombatResult
+  case class MultiHurt(enemy: OrdinalEnemy, health: Int, time: Int) extends CombatResult
+  case class Dead(enemy: OrdinalEnemy) extends CombatResult
 
   sealed trait InfoResult extends ActionResult
   case class WhereAmIResult(x :Int, y : Int) extends InfoResult

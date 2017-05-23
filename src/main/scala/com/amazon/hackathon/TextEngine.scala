@@ -7,22 +7,22 @@ object TextEngine {
     result match {
       case NothingThere => "There is nothing to attack"
 
-      case Killed(Enemy(name, _)) => s"You killed a $name"
+      case Killed(OrdinalEnemy(Enemy(name, _), d)) => s"You killed a $name to the ${directionString(d)}"
 
-      case Hit(Enemy(name, health)) => s"You hit the $name, it now has $health health"
+      case Hit(OrdinalEnemy(Enemy(name, health), _)) => s"You hit the $name, it now has $health health"
 
       case BumpWall => "You walked into a wall dummy. You can ask for me what my sensors see."
 
       case Moved(directions) => locationMessage(ignoreTrivial(ordinalGroupByTile(directions)))
 
-      case Hurt(Enemy(name, enemyHealth), health) => s"a $name hits you"
+      case Hurt(OrdinalEnemy(Enemy(name, _), d), _) => s"a $name to the ${directionString(d)} hits you"
 
       case MultiHurt(enemy, health, times) => resolveResultText(Hurt(enemy, health)) + " " + timesString(times)
 
-      case MultiHurtHit(MultiHurt(Enemy(name, _), _, times), _) => s"You strike the $name and it hits you back " + timesString(times)
-      case HurtHit(Hurt(Enemy(name, _), _), _) => s"You strike the $name and it hits you back "
+      case MultiHurtHit(MultiHurt(OrdinalEnemy(Enemy(name, _), _), _, times), _) => s"You strike the $name and it hits you back " + timesString(times)
+      case HurtHit(Hurt(OrdinalEnemy(Enemy(name, _), _), _), _) => s"You strike the $name and it hits you back "
 
-      case Dead(Enemy(name, eh)) => s"you are dead, Killed by a $name. It stares down at your lifeless body, laughing."
+      case Dead(OrdinalEnemy(Enemy(name, _),d)) => s"you are dead, Killed by a $name to the ${directionString(d)}. It stares down at your lifeless body, laughing."
 
       case Victory => "We found the stairs down to the next dungeon. Unfortunately it appears that ghouls are still building it. Lets try again later"
 
@@ -44,6 +44,15 @@ object TextEngine {
       case 2 => "twice"
       case 3 => "thrice"
       case _ => "many times"
+    }
+  }
+
+  def directionString(direction: Direction) = {
+    direction match {
+      case Up => "north"
+      case Down => "south"
+      case Left => "west"
+      case Right => "east"
     }
   }
 
@@ -113,7 +122,7 @@ object TextEngine {
         case _ => EverythingElse
       }
         .flatMap(x => x._1 match {
-          case e: Enemy => List(MultiHurt(e, x._2.asInstanceOf[List[Hurt]].map(_.health).min, x._2.length))
+          case e: OrdinalEnemy => List(MultiHurt(e, x._2.asInstanceOf[List[Hurt]].map(_.health).min, x._2.length))
           case EverythingElse => x._2
         })
         .toList
@@ -126,7 +135,7 @@ object TextEngine {
         case _ => EverythingElse
       }
         .flatMap(x => x._1 match {
-          case e: Enemy => List(Hit(e))
+          case e: OrdinalEnemy => List(Hit(e))
           case EverythingElse => x._2
         })
         .toList
@@ -141,7 +150,7 @@ object TextEngine {
         case _ => EverythingElse
       }
         .flatMap(x => x._1 match {
-          case _: Enemy => x._2 match {
+          case _: OrdinalEnemy => x._2 match {
             case (h: Hit) :: (hu: Hurt) :: Nil => List(HurtHit(hu, h))
             case (hu: Hurt) :: (h: Hit) :: Nil => List(HurtHit(hu, h))
             case (h: Hit) :: (hu: MultiHurt) :: Nil => List(MultiHurtHit(hu, h))
