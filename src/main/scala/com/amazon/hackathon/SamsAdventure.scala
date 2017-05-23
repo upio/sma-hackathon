@@ -122,7 +122,7 @@ object SamsAdventureSpeechlet extends Speechlet {
       case Help =>
         GameInfoResponse(PlainTextOutput("Help me, help you."))
       case Stop =>
-        SessionUpdateResponse(EndSession, PlainTextOutput("Come back soon."))
+        SessionUpdateResponse(EndSession, SSMLOutput("<emphasis level=\"reduced\"><prosody volume=\"x-loud\">wait!!</prosody></emphasis><break strength=\"x-strong\"/> Don't leave me down here hero."))
       case Cancel =>
         GameInfoResponse(PlainTextOutput("Cancel?. Just keep playing."))
     }

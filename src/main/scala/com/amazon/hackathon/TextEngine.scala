@@ -3,7 +3,7 @@ package com.amazon.hackathon
 import com.amazon.hackathon.domain.{TrivialTile, _}
 
 object TextEngine {
-  def resolveResultText(result : ActionResult) : String = {
+  def resolveResultText(result: ActionResult): String = {
     result match {
       case NothingThere => "There is nothing to attack"
 
@@ -15,7 +15,12 @@ object TextEngine {
 
       case Moved(directions) => locationMessage(ignoreTrivial(ordinalGroupByTile(directions)))
 
-      case Hurt(Enemy(name, enemyHealth), health) => s"you were hurt by a $name. You now have $health health"
+      case Hurt(Enemy(name, enemyHealth), health) => s"a $name hits you"
+
+      case MultiHurt(enemy, health, times) => resolveResultText(Hurt(enemy, health)) + " " + timesString(times)
+
+      case MultiHurtHit(MultiHurt(Enemy(name, _), _, times), _) => s"You strike the $name and it hits you back " + timesString(times)
+      case HurtHit(Hurt(Enemy(name, _), _), _) => s"You strike the $name and it hits you back "
 
       case Dead(Enemy(name, eh)) => s"you are dead, Killed by a $name. It stares down at your lifeless body, laughing."
 
@@ -23,7 +28,7 @@ object TextEngine {
 
       case MyHealthResult(health) => s"You have $health"
 
-      case WhereAmIResult(x,y) => s"We are at position $x, $y. Whatever that means."
+      case WhereAmIResult(x, y) => s"We are at position $x, $y. Whatever that means."
 
       case ObserveResult(tile) => tileMessage(tile)
 
@@ -33,22 +38,34 @@ object TextEngine {
     }
   }
 
-  def ordinalGroupByTile(directions: Ordinal) : Seq[(Tile, Seq[String])] = {
+  def timesString(times: Int) = {
+    times match {
+      case x if x <= 1 => ""
+      case 2 => "twice"
+      case 3 => "thrice"
+      case _ => "many times"
+    }
+  }
+
+  def ordinalGroupByTile(directions: Ordinal): Seq[(Tile, Seq[String])] = {
     val map = directions match {
-      case Ordinal(left,right,up,down) => Map ("west" -> left, "east" -> right, "north" -> up, "south" -> down)
+      case Ordinal(left, right, up, down) => Map("west" -> left, "east" -> right, "north" -> up, "south" -> down)
     }
 
     map.toSeq.groupBy(_._2)
       .map { case (tile, group) => tile -> group.map(_._1) }.toSeq
   }
 
-  def ignoreTrivial( tiles : Seq[(Tile, Seq[String])]) : Seq[(Tile, Seq[String])] = {
-    tiles.filter{x => x._1 match {
-      case _ : TrivialTile => false
-      case _ => true }}
+  def ignoreTrivial(tiles: Seq[(Tile, Seq[String])]): Seq[(Tile, Seq[String])] = {
+    tiles.filter { x =>
+      x._1 match {
+        case _: TrivialTile => false
+        case _ => true
+      }
+    }
   }
 
-  def locationMessage(directions:  Seq[(Tile, Seq[String])]): String = {
+  def locationMessage(directions: Seq[(Tile, Seq[String])]): String = {
     directions.map { x => tileMessage(x._1) + " is to the " + directionText(x._2.toList) }.mkString(". ")
   }
 
@@ -61,13 +78,18 @@ object TextEngine {
     }
   }
 
-  def resolveResults(results: Seq[ActionResult]) : String ={
-    results.toList match {
+  def resolveResults(results: Seq[ActionResult]): String = {
+    reduceResults(results.toList) match {
       case Nil => ""
       case x :: Nil => resolveResultText(x)
-      case (x:Dead) :: y => resolveResultText(x)
+      case (x: Dead) :: _ => resolveResultText(x)
       case x :: xs => resolveResultText(x) + ". " + resolveResults(xs)
     }
+  }
+
+  def reduceResults(results: List[ActionResult]): List[ActionResult] = {
+    List(HurtRule, HitRule, HurtHitRule)
+      .foldLeft(results) { (x, y) => y.action(x) }
   }
 
   private def tileMessage(tile: Tile): String = tile match {
@@ -77,4 +99,58 @@ object TextEngine {
     case Enemy(name, health) => s"a $name with $health health"
     case _ => "oopsy-daisy"
   }
+
+  sealed trait ReduceRule {
+    def action(actions: List[ActionResult]): List[ActionResult]
+  }
+
+  case object EverythingElse
+
+  case object HurtRule extends ReduceRule {
+    override def action(actions: List[ActionResult]): List[ActionResult] =
+      actions.groupBy {
+        case Hurt(e, _) => e
+        case _ => EverythingElse
+      }
+        .flatMap(x => x._1 match {
+          case e: Enemy => List(MultiHurt(e, x._2.asInstanceOf[List[Hurt]].map(_.health).min, x._2.length))
+          case EverythingElse => x._2
+        })
+        .toList
+  }
+
+  case object HitRule extends ReduceRule {
+    override def action(actions: List[ActionResult]): List[ActionResult] =
+      actions.groupBy {
+        case Hit(e) => e
+        case _ => EverythingElse
+      }
+        .flatMap(x => x._1 match {
+          case e: Enemy => List(Hit(e))
+          case EverythingElse => x._2
+        })
+        .toList
+  }
+
+  case object HurtHitRule extends ReduceRule {
+    override def action(actions: List[ActionResult]): List[ActionResult] =
+      actions.groupBy {
+        case Hit(e) => e
+        case Hurt(e, _) => e
+        case MultiHurt(e, _, _) => e
+        case _ => EverythingElse
+      }
+        .flatMap(x => x._1 match {
+          case _: Enemy => x._2 match {
+            case (h: Hit) :: (hu: Hurt) :: Nil => List(HurtHit(hu, h))
+            case (hu: Hurt) :: (h: Hit) :: Nil => List(HurtHit(hu, h))
+            case (h: Hit) :: (hu: MultiHurt) :: Nil => List(MultiHurtHit(hu, h))
+            case (hu: MultiHurt) :: (h: Hit) :: Nil => List(MultiHurtHit(hu, h))
+            case xs => xs
+          }
+          case EverythingElse => x._2
+        })
+        .toList
+  }
+
 }

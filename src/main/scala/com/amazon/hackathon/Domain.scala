@@ -166,6 +166,9 @@ package domain {
   case class Killed(enemy: Enemy) extends AttackResult
   case class Hit(enemy: Enemy) extends AttackResult
 
+  case class HurtHit(hurt: Hurt, hit: Hit) extends ActionResult
+  case class MultiHurtHit(multiHurt: MultiHurt, hit: Hit) extends ActionResult
+
   sealed trait MoveResult extends ActionResult
   case object BumpWall extends MoveResult
   case object Victory extends MoveResult
@@ -173,6 +176,7 @@ package domain {
 
   sealed trait CombatResult extends MoveResult
   case class Hurt(enemy: Enemy, health: Int) extends CombatResult
+  case class MultiHurt(enemy: Enemy, health: Int, time: Int) extends CombatResult
   case class Dead(enemy: Enemy) extends CombatResult
 
   sealed trait InfoResult extends ActionResult
