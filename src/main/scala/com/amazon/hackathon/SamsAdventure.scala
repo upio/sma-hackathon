@@ -21,7 +21,7 @@ object SamsAdventureSpeechlet extends Speechlet {
   val baseMap = GameMap(2, 3, Array(
     Array(Wall, Wall, Wall, Blank, Goal),
     Array(Wall, Wall, Enemy("ghoul", 2), Blank, Wall),
-    Array(Blank, Blank, Blank, Wall, Wall),
+    Array(Blank, Enemy("ghoul", 2), Blank, Wall, Wall),
     Array(Blank, Blank, Player(10), Blank, Blank),
     Array(Blank, Blank, Wall, Blank, Wall)
   ))
@@ -163,26 +163,26 @@ object SamsAdventureSpeechlet extends Speechlet {
     //Move or attack
     val result = action match {
       case Move(direction) => gameMap.move(direction)
-      case Attack(direction) => gameMap.attack(direction)
+      case Attack(direction) => List(gameMap.attack(direction))
     }
 
     //Enemies attack
     val updateResults = gameMap.updateEnemies()
 
-    val results = result +: updateResults
+    val results = result ++ updateResults
 
     GameUpdateResponse(endState(results), PlainTextOutput(TextEngine.resolveResults(results)), gameMap)
   }
 
   def handleInfoAction(action: InfoAction, gameMap: GameMap) : GameInfoResponse = {
     val result = action match {
-      case Observe(direction) => gameMap.observe(direction)
-      case MyHealth => gameMap.playerHealth
-      case WhereAmI => gameMap.playerLocation
-      case DescribeSurroundings => DescribeSurroundingsResult(gameMap.describeLocation)
-      case BeScared => IsScared
+      case Observe(direction) => List(gameMap.observe(direction))
+      case MyHealth => List(gameMap.playerHealth)
+      case WhereAmI => List(gameMap.playerLocation)
+      case DescribeSurroundings => gameMap.describeLocation.map(DescribeSurroundingsResult)
+      case BeScared => List(IsScared)
     }
-    GameInfoResponse(PlainTextOutput(TextEngine.resolveResultText(result)))
+    GameInfoResponse(PlainTextOutput(TextEngine.resolveResults(result)))
   }
 
   def endState(results : Seq[ActionResult]) : SessionState = {
@@ -197,10 +197,7 @@ object SamsAdventureSpeechlet extends Speechlet {
   def handleStartReadyPrompt(promptResponse: PromptResponse) : PromptUpdateResponse = {
     promptResponse match {
       case Yes => PromptFinishedResponse(OpenSession,
-        SSMLOutput("<emphasis level=\"reduced\"><prosody volume=\"x-loud\" rate=\"fast\">Fine</prosody></emphasis>,<break strength=\"x-strong\"/>" +
-          "but I am coming with you. <break strength=\"x-strong\"/><prosody volume=\"x-soft\">The treasure deep in the dungeon will make up for it anyways.</prosody><break strength=\"x-strong\"/>" +
-          "Head down those stairs and lets get this over with. <break strength=\"x-strong\"/> I told you it was going to be dark.<break strength=\"x-strong\"/><break strength=\"x-strong\"/><break strength=\"x-strong\"/>" +
-          "ask me about your surroundings if you want know what my sensors \"see\"?"))
+        SSMLOutput("\"<emphasis level=\"reduced\"><prosody volume=\"x-loud\" rate=\"fast\">Fine</prosody></emphasis>,<break strength=\"x-strong\"/> but I am coming with you. Head down those stairs and lets get this over with. <break time=\"1s\" />Hey! stop swinging your weapon around. I told you it was going to be dark.<break time=\".5s\" />You can ask me about our surroundings if you want to know what my sensors see"))
       case No => PromptFinishedResponse(EndSession, PlainTextOutput("Well, goodbye I guess"))
       case Unknown => PromptOpenResponse(OpenSession, PlainTextOutput("Huh? Speak up. I can't understand you. Please repeat."), "START_READY")
     }
@@ -220,7 +217,7 @@ object SamsAdventureSpeechlet extends Speechlet {
     setPromptWaitState(session, "START_READY")
 
     val welcome =
-      SSMLOutput("<emphasis level=\"reduced\"><prosody volume=\"x-loud\">wait!!</prosody></emphasis><break strength=\"x-strong\"/>Slow down <emphasis level=\"reduced\"><prosody volume=\"x-loud\">Hero.</prosody></emphasis><break strength=\"x-strong\"/>You won't be able to see anything in there. <emphasis level=\"reduced\"><prosody volume=\"loud\">This is your last chance to turn around</prosody></emphasis><break strength=\"x-strong\"/><break strength=\"x-strong\"/>Are you sure you want to enter the dungeon?") //TextEngine.locationMessage(TextEngine.ordinalGroupByTile(baseMap.describeLocation))
+      SSMLOutput("<emphasis level=\"reduced\"><prosody volume=\"x-loud\">wait!!</prosody></emphasis><break time=\".5s\"/>Slow down <emphasis level=\"reduced\"><prosody volume=\"x-loud\">Hero.</prosody></emphasis><break time=\".4s\"/>You won't be able to see anything in there. <emphasis level=\"reduced\"><prosody volume=\"loud\">This is your last chance to turn around</prosody></emphasis><break strength=\"x-strong\"/><break time=\".4s\"/>Are you sure you want to enter the dungeon?") //TextEngine.locationMessage(TextEngine.ordinalGroupByTile(baseMap.describeLocation))
 
     buildResponse(GameInfoResponse(welcome))
   }
@@ -247,15 +244,15 @@ object Scratch extends App {
     Array(Blank, Blank, Wall, Blank, Wall)
   ))
 
-  def printAndMap(result: ActionResult): Unit = {
+  def printAndMap(result: Seq[ActionResult]): Unit = {
     println(result)
     map.tiles.map(_.toList).foreach(println)
     println("-----------------------------------------")
   }
 
   printAndMap(map.move(Up))
-  printAndMap(map.attack(Up))
-  printAndMap(map.attack(Up))
+  printAndMap(List(map.attack(Up)))
+  printAndMap(List(map.attack(Up)))
   printAndMap(map.move(Right))
   printAndMap(map.move(Up))
   printAndMap(map.move(Right))

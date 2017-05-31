@@ -33,7 +33,7 @@ package domain {
 
     private def player: Player = tileAt(x, y).asInstanceOf[Player]
 
-    def describeLocation = Ordinal(tileAt(Left), tileAt(Right), tileAt(Up), tileAt(Down))
+    def describeLocation = getOrdinalTilesAt(getDirections)
 
     def playerLocation : WhereAmIResult = {
       WhereAmIResult(x,y)
@@ -46,10 +46,10 @@ package domain {
     }
 
     def observe(direction: Direction) : ObserveResult = {
-        ObserveResult(tileAt(direction))
+        ObserveResult(tileAt(direction), Seq(direction))
     }
 
-    def move(direction: Direction): MoveResult = {
+    def move(direction: Direction): Seq[MoveResult] = {
       val (newX, newY) = indexAt(direction)
 
       tileAt(direction) match {
@@ -59,9 +59,9 @@ package domain {
           x = newX
           y = newY
 
-          Moved(Ordinal(tileAt(Left), tileAt(Right), tileAt(Up), tileAt(Down)))
+          getOrdinalTilesAt(getDirections).map(Moved)
 
-        case Wall => BumpWall
+        case Wall => List(BumpWall)
 
         case Goal =>
           setTile(newX, newY)(tileAt(x, y))
@@ -69,10 +69,10 @@ package domain {
           x = newX
           y = newY
 
-          Victory
+          List(Victory)
 
         case e: Enemy =>
-          hurtPlayer(OrdinalEnemy(e, direction))
+          List(hurtPlayer(OrdinalEnemy(e, direction)))
       }
     }
 
@@ -112,8 +112,19 @@ package domain {
         .collect{case (e : Enemy, d) => hurtPlayer(OrdinalEnemy(e,d ))}
     }
 
-    def getDirections : Seq[Direction] = {
+    def getDirections : List[Direction] = {
       List(Up, Down, Left, Right)
+    }
+
+    def getOrdinalTilesAt(directions: List[Direction]) : List[OrdinalTile] = {
+      directions match {
+        case Nil => List()
+        case x :: xs =>
+          tileAt(x) match {
+            case e: Enemy => OrdinalEnemy(e, x) :: getOrdinalTilesAt(xs)
+            case t => OrdinalPlainTile(t, x) :: getOrdinalTilesAt(xs)
+          }
+      }
     }
 
   }
@@ -151,47 +162,59 @@ package domain {
 
   sealed trait Tile
 
+  sealed trait TileAction
+  sealed trait MoveTile extends TileAction
+  sealed trait AttackableTile extends TileAction
+  sealed trait BlockedTile extends TileAction
+  sealed trait GoalTile extends MoveTile
+
   sealed trait TileImportance
-  sealed trait TrivialTile extends TileImportance
+  sealed trait ImportantTile extends TileImportance
 
-  case object Blank extends Tile with TrivialTile
-  case object Wall extends Tile
-  case class Enemy(name: String, health: Int) extends Tile
+  case object Blank extends Tile with MoveTile
+  case object Wall extends Tile with BlockedTile
+  case class Enemy(name: String, health: Int) extends Tile with AttackableTile with ImportantTile
   case class Player(health: Int) extends Tile
-  case object Goal extends Tile
+  case object Goal extends Tile with GoalTile with ImportantTile
 
-  sealed trait OrdinalTile
+  sealed trait OrdinalTile { def direction : Direction; def tile: Tile }
   case class OrdinalPlainTile(tile: Tile, direction: Direction) extends OrdinalTile
-  case class OrdinalEnemy(enemy: Enemy, direction: Direction) extends OrdinalTile
+  case class OrdinalEnemy(tile: Enemy, direction: Direction) extends OrdinalTile
 
-  sealed trait ActionResult
+  case class ResultOrder(order: Int)
 
-  sealed trait AttackResult extends ActionResult
+  sealed trait ActionResult{def order: Integer}
+
+  sealed trait AttackResult extends ActionResult { override def order = 0}
   case object NothingThere extends AttackResult
   case class Killed(enemy: OrdinalEnemy) extends AttackResult
   case class Hit(enemy: OrdinalEnemy) extends AttackResult
 
-  case class HurtHit(hurt: Hurt, hit: Hit) extends ActionResult
-  case class MultiHurtHit(multiHurt: MultiHurt, hit: Hit) extends ActionResult
+  case class HurtHit(hurt: Hurt, hit: Hit) extends AttackResult
+  case class MultiHurtHit(multiHurt: MultiHurt, hit: Hit) extends AttackResult
 
-  sealed trait MoveResult extends ActionResult
+  sealed trait MoveResult extends ActionResult { override def order = 5}
   case object BumpWall extends MoveResult
   case object Victory extends MoveResult
-  case class Moved(directions: Ordinal) extends MoveResult
+  case class Moved(tile: OrdinalTile) extends MoveResult
 
   sealed trait CombatResult extends MoveResult
   case class Hurt(enemy: OrdinalEnemy, health: Int) extends CombatResult
   case class MultiHurt(enemy: OrdinalEnemy, health: Int, time: Int) extends CombatResult
   case class Dead(enemy: OrdinalEnemy) extends CombatResult
 
-  sealed trait InfoResult extends ActionResult
+  sealed trait InfoResult extends ActionResult { override def order = 10}
   case class WhereAmIResult(x :Int, y : Int) extends InfoResult
   case class MyHealthResult(myHealth : Int) extends InfoResult
-  case class ObserveResult(tile: Tile) extends InfoResult
-  case class DescribeSurroundingsResult(ordinal: Ordinal) extends InfoResult
+  case class ObserveResult(tile: Tile, directions: Seq[Direction]) extends InfoResult
+  case class DescribeSurroundingsResult(ordinalTile: OrdinalTile) extends InfoResult
   case object IsScared extends InfoResult
 
-  case class Ordinal(left: Tile, right: Tile, up: Tile, down: Tile)
+  sealed trait SuggestionResult extends ActionResult { override def order = 100 }
+  case class MoveSuggestion(direction: Direction) extends SuggestionResult
+  case class MultiMoveSuggestion(direction: List[Direction]) extends SuggestionResult
+  case class AttackSuggestion(direction: Direction) extends SuggestionResult
+  case class MultiAttackSuggestion(direction: List[Direction]) extends SuggestionResult
 
   sealed trait SessionState
   case object EndSession extends SessionState
